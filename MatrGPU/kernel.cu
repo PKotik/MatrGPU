@@ -53,15 +53,16 @@ void Inic(double** matrix, unsigned int n)
     }
 }
 
-__global__ void SRowMatrix(unsigned int row, double** matrix, unsigned int n)
+__global__ void SRowMatrix(unsigned int row, double* matrix, unsigned int n)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    //int j = blockIdx.x * blockDim.x + threadIdx.x;  // Индекс столбца
+    int i = blockIdx.x * blockDim.x + threadIdx.x; // Индекс строки
     if (i != row)
     {
-        double k = matrix[i][row] / matrix[row][row];
+        double k = matrix[i*row+row] / matrix[row*row+row];
         for (int j = 0; j < 2 * n; j++)
         {
-            matrix[i][j] -= k * matrix[row][j];
+            matrix[i*j+j] -= k * matrix[row*j+j];
         }
     }
 }
@@ -80,7 +81,7 @@ void PrintMatrixRev(double** matrix, unsigned int n)
 {
     for (int i = 0; i < n; i++) {
         for (int j = n; j < 2 * n; j++) {
-            printf("%.6f", matrix[i][j]);
+            printf("%.6f ", matrix[i][j]);
         }
         printf("\n");
     }
@@ -96,14 +97,14 @@ void PrintMatrixOrig(double** matrix, unsigned int n)
     }
 }
 
-__global__ void GoToOneRows(double** matrix, unsigned int n)
+__global__ void GoToOneRows(double* matrix, unsigned int n)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double k = matrix[i][i];
-    matrix[i][i] /= k;
+    double k = matrix[i*i+i];
+    matrix[i*i+i] /= k;
     for (int j = n; j < 2 * n; j++)
     {
-        matrix[i][j] /= k;
+        matrix[i*j+j] /= k;
     }
 }
 
@@ -117,34 +118,59 @@ int main(void)
     double** M = CreateMatrix(n);
     Inic(M, n);
 
-    double** A;
+    double* N = (double*)malloc(matrixSize);
+    for (int i = 0; i < n * 2 * n; i++)
+    {
+        int l = i / (2*n);
+        int k = i % (2*n);
+        N[i] = M[l][k];
+    }
 
     clock_t start, end;
     PrintMatrixOrig(M, n);
     start = clock();
 
-    double** A;
-    cudaMalloc((void**)A, matrixSize);
-    cudaMemcpy(A, M, matrixSize, cudaMemcpyHostToDevice);
+    double* A;
+    cudaMalloc((void**)&A, matrixSize);
+    cudaMemcpy(A, N, matrixSize, cudaMemcpyHostToDevice);
 
     dim3 blockDim(256);
     dim3 gridDim((n + blockDim.x - 1) / blockDim.x);
 
     for (int row = 0; row < n; row++)
     {
-        SRowMatrix << <gridDim, blockDim >> > (A, n, i);
+        SRowMatrix << <gridDim, blockDim >> > (row, A, n);
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("CUDA error: %s\n", cudaGetErrorString(err));
+        }
         cudaDeviceSynchronize();
     }
-    GoToOneRows << <gridDim, blockDim >> > (A, n, i);
+    GoToOneRows << <gridDim, blockDim >> > (A, n);
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error: %s\n", cudaGetErrorString(err));
+    }
     cudaDeviceSynchronize();
 
-    cudaMemcpy(M, A, matrixSize, cudaMemcpyDeviceToHost);
-    
-    freeMatrix(n, M);
+    cudaMemcpy(N, A, matrixSize, cudaMemcpyDeviceToHost);
     cudaFree(A);
+
+    end = clock();
+    
+    for (int i = 0; i < n * 2 * n; i++)
+    {
+        int l = i / (2 * n);
+        int k = i % (2 * n);
+        M[l][k]=N[i];
+    }
+    
     double time = (((double)(end - start)) * 1000) / CLOCKS_PER_SEC;
 
+    PrintMatrixOrig(M, n);
     PrintMatrixRev(M, n);
+    freeMatrix(n, M);
+    free(N);
     /*system("cls");*/
     printf("Ready!!! Process took: ");
     printf("%d ms", (int)time);
