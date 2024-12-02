@@ -59,10 +59,10 @@ __global__ void SRowMatrix(unsigned int row, double* matrix, unsigned int n)
     int i = blockIdx.x * blockDim.x + threadIdx.x; // Индекс строки
     if (i != row)
     {
-        double k = matrix[i*row+row] / matrix[row*row+row];
+        double k = matrix[i* (2 * n) +row] / matrix[row* (2 * n) +row];
         for (int j = 0; j < 2 * n; j++)
         {
-            matrix[i*j+j] -= k * matrix[row*j+j];
+            matrix[i* (2 * n) +j] -= k * matrix[row* (2 * n) +j];
         }
     }
 }
@@ -100,11 +100,11 @@ void PrintMatrixOrig(double** matrix, unsigned int n)
 __global__ void GoToOneRows(double* matrix, unsigned int n)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double k = matrix[i*i+i];
-    matrix[i*i+i] /= k;
+    double k = matrix[i* (2 * n) +i];
+    matrix[i* (2 * n) +i] /= k;
     for (int j = n; j < 2 * n; j++)
     {
-        matrix[i*j+j] /= k;
+        matrix[i*(2*n)+j] /= k;
     }
 }
 
@@ -113,12 +113,12 @@ int main(void)
 
 
 
-    int n = 3;
+    int n = 1000;
     size_t matrixSize = sizeof(double) * n * 2 * n;
     double** M = CreateMatrix(n);
     Inic(M, n);
 
-    double* N = (double*)malloc(matrixSize);
+    double *N = (double*)malloc(matrixSize);
     for (int i = 0; i < n * 2 * n; i++)
     {
         int l = i / (2*n);
@@ -127,10 +127,10 @@ int main(void)
     }
 
     clock_t start, end;
-    PrintMatrixOrig(M, n);
+    //PrintMatrixOrig(M, n);
     start = clock();
 
-    double* A;
+    double *A;
     cudaMalloc((void**)&A, matrixSize);
     cudaMemcpy(A, N, matrixSize, cudaMemcpyHostToDevice);
 
@@ -167,8 +167,8 @@ int main(void)
     
     double time = (((double)(end - start)) * 1000) / CLOCKS_PER_SEC;
 
-    PrintMatrixOrig(M, n);
-    PrintMatrixRev(M, n);
+    //PrintMatrixOrig(M, n);
+    //PrintMatrixRev(M, n);
     freeMatrix(n, M);
     free(N);
     /*system("cls");*/
