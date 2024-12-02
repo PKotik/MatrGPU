@@ -43,7 +43,7 @@ void Inic(double** matrix, unsigned int n)
 {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < 2 * n; j++) {
-            if (j < n) matrix[i][j] = rand() % 9999999;
+            if (j < n) matrix[i][j] = 1 + rand() % 9999999;
             else
             {
                 if (i + n == j) matrix[i][j] = 1;
@@ -55,25 +55,15 @@ void Inic(double** matrix, unsigned int n)
 
 __global__ void SRowMatrix(unsigned int row, double* matrix, unsigned int n)
 {
-    //int j = blockIdx.x * blockDim.x + threadIdx.x;  // Индекс столбца
-    int i = blockIdx.x * blockDim.x + threadIdx.x; // Индекс строки
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int start_row = row * 2 * n;
+    unsigned int i = j / (2 * n);
     if (i != row)
     {
-        double k = matrix[i* (2 * n) +row] / matrix[row* (2 * n) +row];
-        for (int j = 0; j < 2 * n; j++)
-        {
-            matrix[i* (2 * n) +j] -= k * matrix[row* (2 * n) +j];
-        }
+        double k = matrix[i*(2*n)+row] / matrix[start_row + row];
+        matrix[j] -= k * matrix[start_row+(j%(2*n))];
     }
 }
-
-//void SAllMatrix(double** matrix, unsigned int n)
-//{
-//    for (int row = 0; row < n; row++)
-//    {
-//        SRowMatrix(row, matrix, n);
-//    }
-//}
 
 
 
@@ -99,21 +89,32 @@ void PrintMatrixOrig(double** matrix, unsigned int n)
 
 __global__ void GoToOneRows(double* matrix, unsigned int n)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int i = j / (2 * n);
     double k = matrix[i* (2 * n) +i];
-    matrix[i* (2 * n) +i] /= k;
-    for (int j = n; j < 2 * n; j++)
+    matrix[j] /= k;
+    /*for (int j = n; j < 2 * n; j++)
     {
         matrix[i*(2*n)+j] /= k;
-    }
+    }*/
 }
+
+
+//int i = blockIdx.x * blockDim.x + threadIdx.x;
+//double k = matrix[i * (2 * n) + i];
+//matrix[i * (2 * n) + i] /= k;
+//for (int j = n; j < 2 * n; j++)
+//{
+//    matrix[i * (2 * n) + j] /= k;
+//}
 
 int main(void)
 {
 
 
 
-    int n = 1000;
+    int n = 3000;
+    unsigned int totalElements = 2 * n * n;
     size_t matrixSize = sizeof(double) * n * 2 * n;
     double** M = CreateMatrix(n);
     Inic(M, n);
@@ -127,7 +128,7 @@ int main(void)
     }
 
     clock_t start, end;
-    //PrintMatrixOrig(M, n);
+    /*PrintMatrixOrig(M, n);*/
     start = clock();
 
     double *A;
@@ -135,7 +136,9 @@ int main(void)
     cudaMemcpy(A, N, matrixSize, cudaMemcpyHostToDevice);
 
     dim3 blockDim(256);
-    dim3 gridDim((n + blockDim.x - 1) / blockDim.x);
+
+    dim3 gridDim((totalElements + blockDim.x - 1) / blockDim.x);
+    /*(n + blockDim.x - 1) / blockDim.x*/
 
     for (int row = 0; row < n; row++)
     {
@@ -167,8 +170,7 @@ int main(void)
     
     double time = (((double)(end - start)) * 1000) / CLOCKS_PER_SEC;
 
-    //PrintMatrixOrig(M, n);
-    //PrintMatrixRev(M, n);
+    /*PrintMatrixRev(M, n);*/
     freeMatrix(n, M);
     free(N);
     /*system("cls");*/
